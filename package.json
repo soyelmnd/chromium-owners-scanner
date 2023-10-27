@@ -1,0 +1,13 @@
+{
+  "name": "owners-scanner",
+  "version": "0.0.1",
+  "description": "An utility belt to assist teams working with Chromium's OWNERS files",
+  "scripts": {
+    "start": "tsc && node dist/index.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^20.8.9",
+    "typescript": "^5.2.2"
+  }
+}
