@@ -5,7 +5,7 @@ import { join as pathJoin } from "path";
 type OwnerNode = {
   noParent: boolean;
   owners: string[];
-  perFileOwners: { [pattern: string]: string[] };
+  perFile: Map</* pattern */ string, Omit<OwnerNode, "perFile">>;
 };
 
 const OWNERS_FILE_NAME = "OWNERS";
@@ -59,21 +59,34 @@ async function main() {
         await walkInto(childNodePathSegments, ownersNodes);
       } else {
         if (!IGNORING_RGX.test(childNodePath)) {
-          pathToOwners.set(childNodePath, mergedOwnerNode.owners);
+          let perFileOwnersApplied = false;
+          for (const [perFilePattern, perFileNode] of mergedOwnerNode.perFile) {
+            if (matchPattern(perFilePattern, childNodeName)) {
+              pathToOwners.set(childNodePath, perFileNode.owners);
+              perFileOwnersApplied = true;
+              break;
+            }
+          }
+
+          if (!perFileOwnersApplied) {
+            pathToOwners.set(childNodePath, mergedOwnerNode.owners);
+          }
         }
       }
     }
   }
 }
 
+function matchPattern(pattern: string, nodeName: string) {
+  // TODO support glob
+  return pattern === nodeName;
+}
+
 function mergeOwnersNodes(
   currentOwnersNode: OwnerNode | undefined,
   parentOwnerNodes: OwnerNode[]
-): Omit<OwnerNode, 'noParent'> {
-  const owners = new Set<string>();
-  const perFileOwners = {};
-
-  // TODO handle per-file
+): OwnerNode {
+  const owners: string[] = [];
 
   const ownersNodes =
     currentOwnersNode != null
@@ -81,17 +94,28 @@ function mergeOwnersNodes(
       : parentOwnerNodes;
 
   for (const ownersNode of ownersNodes) {
-    ownersNode.owners.forEach((o) => {
-      owners.add(o);
-    });
+    owners.push(...ownersNode.owners);
+
     if (ownersNode.noParent) {
       break;
     }
   }
 
+  // Please note the perFile rules do not propagate to descendant folders
+  const perFile: OwnerNode["perFile"] = new Map();
+  if (currentOwnersNode) {
+    for (const [perFilePattern, perFileNode] of currentOwnersNode.perFile) {
+      perFile.set(perFilePattern, {
+        noParent: true, // not used, update the type?
+        owners: uniqueArray([...perFileNode.owners, ...owners]),
+      });
+    }
+  }
+
   return {
-    owners: [...owners],
-    perFileOwners,
+    noParent: true, // not used, update the type?
+    owners: uniqueArray(owners),
+    perFile,
   };
 }
 
@@ -101,20 +125,49 @@ function parseOwnersFile(pathSegments: string[]): OwnerNode | undefined {
     return;
   }
 
+  const perFile: OwnerNode["perFile"] = new Map();
+
   const content = fsReadFileSync(path, "utf8");
   const lines = content.trim().split(/\s*\n+\s*/);
 
   const noParent = lines.includes("set noparent");
-  const owners = lines.filter((line) => line !== "set noparent");
-  const perFileOwners = {};
+  const owners = lines.filter(
+    (line) => !/^(?:per-file|set noparent|[*#])\b/.test(line)
+  );
 
-  // TODO parse per-file
+  // TODO file: directive
+
+  const perFileLines = lines.filter((line) => /^per-file\s/.test(line));
+  perFileLines.forEach((perFileLine) => {
+    const segments = perFileLine.match(/per-file\s+(.+?)\s*=\s*(.+)/);
+    if (!segments) {
+      return;
+    }
+
+    const [_wholeMatch, perFilePatterns, perFileDirective] = segments;
+
+    perFilePatterns.split(/\s*,\s*/).forEach((perFilePattern) => {
+      // TODO per-file does not support set no parent yet
+
+      const perFileOwners =
+        perFileDirective === "*" ? [] : perFileDirective.split(/\s*,\s*/g);
+
+      perFile.set(perFilePattern, {
+        noParent: false,
+        owners: uniqueArray([...perFileOwners, ...owners]),
+      });
+    });
+  });
 
   return {
     noParent,
     owners,
-    perFileOwners,
+    perFile,
   };
+}
+
+function uniqueArray<T>(items: T[]): T[] {
+  return [...new Set(items)];
 }
 
 main();
