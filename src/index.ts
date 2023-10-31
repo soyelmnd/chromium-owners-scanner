@@ -78,7 +78,10 @@ async function main() {
 }
 
 function matchPattern(pattern: string, nodeName: string) {
-  // TODO support glob
+  if (pattern.includes("*")) {
+    const rgx = new RegExp(pattern.replace(/\*/g, "(?:.+?)"));
+    return rgx.test(nodeName);
+  }
   return pattern === nodeName;
 }
 
