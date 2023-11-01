@@ -19,3 +19,5 @@ goowners
 ```
 
 And :fingers_crossed: it will give you some statistics, e.g. file-owners map, number of owning files per owner, coownership stats, ownership coverage, etc
+
+![image](https://github.com/soyelmnd/chromium-owners-scanner/assets/2678063/f30514da-9164-42a4-92b7-4a87a3467072)
