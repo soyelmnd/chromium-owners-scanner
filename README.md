@@ -1,12 +1,6 @@
 This is the very very early version of the OWNERS utils set that would be helpful for every repo using [Chromium's OWNERS files](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/code_reviews.md).  
 
-Install it using either `npm` or `yarn`  
-
-```bash
-yarn global add https://github.com/soyelmnd/chromium-owners-scanner
-```
-
-or
+Install it using either `npm`
 
 ```bash
 npm i -g https://github.com/soyelmnd/chromium-owners-scanner
