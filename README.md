@@ -3,6 +3,12 @@ This is the very very early version of the OWNERS utils set that would be helpfu
 Install it using either `npm` or `yarn`  
 
 ```bash
+yarn global add https://github.com/soyelmnd/chromium-owners-scanner
+```
+
+or
+
+```bash
 npm i -g https://github.com/soyelmnd/chromium-owners-scanner
 ```
 
