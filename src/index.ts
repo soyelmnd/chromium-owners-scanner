@@ -39,7 +39,7 @@ async function scanOwners() {
   ) {
     // A trailing / should help tell us this is a folder at a glance
     const path = pathJoin(...pathSegments) + "/";
-    const currentOwnersNode = parseOwnersFile(pathSegments);
+    const currentOwnersNode = parseOwnersFile(path);
     const mergedOwnerNode = mergeOwnersNodes(
       currentOwnersNode,
       parentOwnerNodes
@@ -134,38 +134,73 @@ function mergeOwnersNodes(
   };
 }
 
-function parseOwnersFile(pathSegments: string[]): OwnerNode | undefined {
-  const path = pathJoin(BASE_DIR, ...pathSegments, OWNERS_FILE_NAME);
-  if (!fsExistsSync(path)) {
+/**
+ * @param path path to the directory or the OWNERS file itself
+ * @returns
+ */
+function parseOwnersFile(path: string): OwnerNode | undefined {
+  const pathSegments = [BASE_DIR, path];
+  if (!path.endsWith(OWNERS_FILE_NAME)) {
+    pathSegments.push(OWNERS_FILE_NAME);
+  }
+
+  const ownersFullPath = pathJoin(...pathSegments);
+  if (!fsExistsSync(ownersFullPath)) {
     return;
   }
 
-  const perFile: OwnerNode["perFile"] = new Map();
+  const lines = loadFile(ownersFullPath);
 
-  const content = fsReadFileSync(path, "utf8");
-  const lines = content.trim().split(/\s*\n+\s*/);
+  // Including other files
+  // Note: this _can_ cause an infinite loop
+  for (const line of lines) {
+    const matches = line.match(/^(include\s+|file:)(.+)/);
+    if (!matches) {
+      continue;
+    }
+
+    if (!line.endsWith(OWNERS_FILE_NAME)) {
+      throw new Error(`Invalid include syntax: "${line}" should point to an OWNERS file`);
+    }
+
+    const [_wholeMatch, directive, includePath] = matches;
+
+    // The file: directive would skip per-file and `set noparent` rules
+    const skipImplicitGrant = directive === 'file:';
+
+    const includeFullPath = includePath.startsWith("/")
+      ? pathJoin(BASE_DIR, includePath)
+      : pathJoin(BASE_DIR, path, includePath);
+
+    const includeLines = loadFile(includeFullPath);
+    const filteredIncludeLines = skipImplicitGrant
+      ? includeLines.filter(line => !/^(?:per-file|set noparent)\b/.test(line))
+      : includeLines;
+
+    lines.push(...filteredIncludeLines);
+  }
 
   const noParent = lines.includes("set noparent");
   const owners = lines.filter(
-    (line) => !/^(?:per-file\b|set noparent\b|[*#])/.test(line)
+    (line) => !/^(?:include\b|file:|per-file\b|set noparent\b|[*#])/.test(line)
   );
 
-  // TODO file: directive
-
+  const perFile: OwnerNode["perFile"] = new Map();
   const perFileLines = lines.filter((line) => /^per-file\s/.test(line));
   perFileLines.forEach((perFileLine) => {
-    const segments = perFileLine.match(/per-file\s+(.+?)\s*=\s*(.+)/);
-    if (!segments) {
+    const matches = perFileLine.match(/per-file\s+(.+?)\s*=\s*(.+)/);
+    if (!matches) {
       return;
     }
 
-    const [_wholeMatch, perFilePatterns, perFileDirective] = segments;
+    const [_wholeMatch, perFilePatterns, perFileDirective] = matches;
 
     perFilePatterns.split(/\s*,\s*/).forEach((perFilePattern) => {
-      // TODO per-file does not support set no parent yet
+      // TODO per-file does not support `set noparent` yet
+      // TODO per-file does not support `file` yet
 
       const perFileOwners =
-        perFileDirective === "*" ? [] : perFileDirective.split(/\s*,\s*/g);
+        perFileDirective === "*" ? [] : perFileDirective.split(/,/g);
 
       perFile.set(perFilePattern, {
         noParent: false,
@@ -179,6 +214,13 @@ function parseOwnersFile(pathSegments: string[]): OwnerNode | undefined {
     owners,
     perFile,
   };
+}
+
+function loadFile(fullPath: string): string[] {
+  const content = fsReadFileSync(fullPath, "utf8");
+  const lines = content.trim().split(/\s*\n+\s*/);
+
+  return lines;
 }
 
 function uniqueArray<T>(items: T[]): T[] {
