@@ -6,8 +6,9 @@
     "goowners": "dist/index.js"
   },
   "scripts": {
-    "postinstall": "tsc",
-    "start": "tsc && node dist/index.js"
+    "build": "tsc -p .",
+    "postinstall": "npm run build",
+    "start": "npm run build && node dist/index.js"
   },
   "license": "ISC",
   "dependencies": {
