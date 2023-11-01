@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { readdir as fsReaddir } from "fs/promises";
 import { existsSync as fsExistsSync, readFileSync as fsReadFileSync } from "fs";
 import { join as pathJoin } from "path";
@@ -13,10 +15,14 @@ type OwnerNode = {
 };
 
 const OWNERS_FILE_NAME = "OWNERS";
-const BASE_DIR = "../minh-codeownership-spike/";
+
+// TODO subcommand to not list everything at once
+// TODO take the list of exclusion from .gitignore if available. Or git ls-files instead?
+// TODO auto set git repo root as the BASE_DIR
+const BASE_DIR = process.cwd();
 const IGNORING_RGX = new RegExp(
   "(?:" +
-    ["^./", "^.git", "node_modules", `${OWNERS_FILE_NAME}$`].join("|") +
+    ["^\./", "\.git", "node_modules", `${OWNERS_FILE_NAME}$`].join("|") +
     ")"
 );
 
@@ -321,27 +327,29 @@ async function main() {
       })),
   }).printTable();
 
-  // Printing paths with
-  const ownersCountTable = new Table();
-  pathsByOwnersCount.forEach((paths, ownersCount) => {
-    let color: string | undefined;
-    if (ownersCount < 2) {
-      color = "red";
-    } else if (ownersCount > 3) {
-      color = "yellow";
-    }
-
-    ownersCountTable.addRow(
-      {
-        ["Owners count"]: ownersCount,
-        ["Count"]: paths.length,
-      },
-      {
-        color,
+  // Printing files-per-owners statistics
+  if (pathsByOwnersCount.length) {
+    const pathsPerOwnersTable = new Table();
+    pathsByOwnersCount.forEach((paths, ownersCount) => {
+      let color: string | undefined;
+      if (ownersCount < 2) {
+        color = "red";
+      } else if (ownersCount > 3) {
+        color = "yellow";
       }
-    );
-  });
-  ownersCountTable.printTable();
+
+      pathsPerOwnersTable.addRow(
+        {
+          ["Owners count"]: ownersCount,
+          ["Count"]: paths.length,
+        },
+        {
+          color,
+        }
+      );
+    });
+    pathsPerOwnersTable.printTable();
+  }
 
   // Printing unowned paths
   new Table({
