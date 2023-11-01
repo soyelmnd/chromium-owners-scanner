@@ -6,11 +6,13 @@ Install it using either `npm`
 npm i -g https://github.com/soyelmnd/chromium-owners-scanner
 ```
 
-And then jump to the root of _your_ repo, run `goowners`  
+And then jump to the root of _your_ repo, run `goowners`. Might be best to pipe it through `less -r` or `>` to file since the output might be lengthy.    
 
 ```bash
 goowners
 ```
+
+(Or `yarn dlx -p chromium-owners-scanner@https://github.com/soyelmnd/chromium-owners-scanner goowners` without pre-installing if you prefer)
 
 And :fingers_crossed: it will give you some statistics, e.g. file-owners map, number of owning files per owner, coownership stats, ownership coverage, etc
 
