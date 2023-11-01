@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
+import { promisify } from "util";
+import { exec as childProcessExec } from "child_process";
 import { readdir as fsReaddir } from "fs/promises";
 import { existsSync as fsExistsSync, readFileSync as fsReadFileSync } from "fs";
 import { join as pathJoin } from "path";
 import { Table } from "console-table-printer";
+
+const exec = promisify(childProcessExec);
 
 type OwnerNode = {
   noParent: boolean;
@@ -223,10 +227,11 @@ function parseOwnersFile(path: string): OwnerNode | undefined {
 }
 
 function loadFile(fullPath: string): string[] {
-  const content = fsReadFileSync(fullPath, "utf8");
-  const lines = content.trim().split(/\s*\n+\s*/);
+  return splitLines(fsReadFileSync(fullPath, "utf8"));
+}
 
-  return lines;
+function splitLines(text: string): string[] {
+  return text.trim().split(/\s*\n+\s*/);
 }
 
 function uniqueArray<T>(items: T[]): T[] {
@@ -238,62 +243,57 @@ async function main() {
 
   const filesTable = new Table({
     columns: [
-      { name: "path", alignment: "left", title: "Path" },
+      { name: "path", alignment: "left", title: "File" },
       { name: "owners", alignment: "right", title: "Owners" },
     ],
   });
 
-  const unownedPath: string[] = [];
+  const unownedFiles: string[] = [];
 
   const ownersStats: {
-    [key: string]: { owner: string; dirsOwned: number; filesOwned: number };
+    [key: string]: { owner: string; filesOwned: number };
   } = {};
 
+  const { stdout: gitLsFilesOutput } = await exec(`cd ${BASE_DIR}; git ls-files`);
+  const gitFiles = new Set(splitLines(gitLsFilesOutput));
+
   const fileStats = {
-    dirsCount: 0,
-    dirsOwnedCount: 0,
     filesCount: 0,
     filesOwnedCount: 0,
   };
 
-  const pathsByOwnersCount: string[][] = [];
+  // It is actually a { [coownersCount: number]: number } map. Sorry for abusing array :grimacing:
+  const coownersCountMap: number[] = [];
 
   pathToOwners.forEach((owners, path) => {
+    if (!gitFiles.has(path)) {
+      return;
+    }
+
     const isOwned = owners.length;
     const isDir = path.endsWith("/");
 
-    if (!isOwned) {
-      unownedPath.push(path);
-    }
-
-    if (isDir) {
-      ++fileStats.dirsCount;
-      if (isOwned) {
-        ++fileStats.dirsOwnedCount;
+    if (!isDir) {
+      if (!isOwned) {
+        unownedFiles.push(path);
       }
-    } else {
+
       ++fileStats.filesCount;
       if (isOwned) {
         ++fileStats.filesOwnedCount;
       }
-    }
 
-    // Owners count can be helpful in ensuring the right ownership is there
-    pathsByOwnersCount[owners.length] = [
-      ...(pathsByOwnersCount[owners.length] || []),
-      path,
-    ];
+      // Co-owners count can be helpful in ensuring the right ownership is there
+      coownersCountMap[owners.length] = (coownersCountMap[owners.length] || 0) + 1;
+    }
 
     owners.forEach((owner) => {
       ownersStats[owner] = ownersStats[owner] || {
         owner,
-        dirsOwned: 0,
         filesOwned: 0,
       };
 
-      if (isDir) {
-        ++ownersStats[owner].dirsOwned;
-      } else {
+      if (!isDir) {
         ++ownersStats[owner].filesOwned;
       }
     });
@@ -308,47 +308,36 @@ async function main() {
   // Printing the owners billboard
   new Table({
     rows: Object.values(ownersStats)
-      .sort((a, b) => {
-        const aTotal = a.dirsOwned + a.filesOwned;
-        const bTotal = b.dirsOwned + b.filesOwned;
-
-        return bTotal - aTotal || b.dirsOwned - a.dirsOwned;
-      })
+      .sort((a, b) => b.filesOwned - a.filesOwned)
       .map((o) => ({
         Owner: o.owner,
-        ["Directories"]: o.dirsOwned,
-        ["Files"]: o.filesOwned,
-        ["Directories (%)"]: percentage(o.dirsOwned, fileStats.dirsCount),
-        ["Files (%)"]: percentage(o.filesOwned, fileStats.filesCount),
-        ["Total (%)"]: percentage(
-          o.dirsOwned + o.filesOwned,
-          fileStats.dirsCount + fileStats.filesCount
-        ),
+        ["Files owned"]: o.filesOwned,
+        ["% of the repo files"]: percentage(o.filesOwned, fileStats.filesCount),
       })),
   }).printTable();
 
-  // Printing files-per-owners statistics
-  if (pathsByOwnersCount.length) {
-    const pathsPerOwnersTable = new Table();
-    pathsByOwnersCount.forEach((paths, ownersCount) => {
+  // Printing owners-per-file statistics
+  if (coownersCountMap.length) {
+    const coownersCountTable = new Table();
+    coownersCountMap.forEach((filesCount, coownersCount) => {
       let color: string | undefined;
-      if (ownersCount < 2) {
+      if (coownersCount < 2) {
         color = "red";
-      } else if (ownersCount > 3) {
+      } else if (coownersCount > 3) {
         color = "yellow";
       }
 
-      pathsPerOwnersTable.addRow(
+      coownersCountTable.addRow(
         {
-          ["Owners count"]: ownersCount,
-          ["Count"]: paths.length,
+          ["Number of co-owners per file"]: coownersCount,
+          ["Number of files"]: filesCount,
         },
         {
           color,
         }
       );
     });
-    pathsPerOwnersTable.printTable();
+    coownersCountTable.printTable();
   }
 
   // Printing unowned paths
@@ -357,27 +346,15 @@ async function main() {
       {
         name: "path",
         alignment: "left",
-        title: "No owners",
+        title: "Files with no owners",
         color: "red",
       },
     ],
-    rows: unownedPath.map((value) => ({ path: value })),
+    rows: unownedFiles.map((value) => ({ path: value })),
   }).printTable();
 
   // Printing file statistics
   new Table()
-    .addRow(
-      { Stats: "Total directories", Value: fileStats.dirsCount },
-      { color: "green" }
-    )
-    .addRow({
-      Stats: "Directories with owners",
-      Value: fileStats.dirsOwnedCount,
-    })
-    .addRow({
-      Stats: "Directories with owners (%)",
-      Value: percentage(fileStats.dirsOwnedCount, fileStats.dirsCount),
-    })
     .addRow(
       { Stats: "Total files", Value: fileStats.filesCount },
       { color: "green" }
