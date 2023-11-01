@@ -197,6 +197,10 @@ async function main() {
 
   const unownedPath: string[] = [];
 
+  const ownersStats: {
+    [key: string]: { owner: string; dirsOwned: number; filesOwned: number };
+  } = {};
+
   const fileStats = {
     dirsCount: 0,
     dirsOwnedCount: 0,
@@ -204,14 +208,17 @@ async function main() {
     filesOwnedCount: 0,
   };
 
+  const pathsByOwnersCount: string[][] = [];
+
   pathToOwners.forEach((owners, path) => {
     const isOwned = owners.length;
+    const isDir = path.endsWith("/");
 
     if (!isOwned) {
       unownedPath.push(path);
     }
 
-    if (path.endsWith("/")) {
+    if (isDir) {
       ++fileStats.dirsCount;
       if (isOwned) {
         ++fileStats.dirsOwnedCount;
@@ -223,11 +230,76 @@ async function main() {
       }
     }
 
+    // Owners count can be helpful in ensuring the right ownership is there
+    pathsByOwnersCount[owners.length] = [
+      ...(pathsByOwnersCount[owners.length] || []),
+      path,
+    ];
+
+    owners.forEach((owner) => {
+      ownersStats[owner] = ownersStats[owner] || {
+        owner,
+        dirsOwned: 0,
+        filesOwned: 0,
+      };
+
+      if (isDir) {
+        ++ownersStats[owner].dirsOwned;
+      } else {
+        ++ownersStats[owner].filesOwned;
+      }
+    });
+
     const color = isOwned ? "green" : "red";
     filesTable.addRow({ path, owners }, { color });
   });
 
+  // Printing the entire files and folders along with their ownership
   filesTable.printTable();
+
+  // Printing the owners billboard
+  new Table({
+    rows: Object.values(ownersStats)
+      .sort((a, b) => {
+        const aTotal = a.dirsOwned + a.filesOwned;
+        const bTotal = b.dirsOwned + b.filesOwned;
+
+        return bTotal - aTotal || b.dirsOwned - a.dirsOwned;
+      })
+      .map((o) => ({
+        Owner: o.owner,
+        ["Directories"]: o.dirsOwned,
+        ["Files"]: o.filesOwned,
+        ["Directories (%)"]: percentage(o.dirsOwned, fileStats.dirsCount),
+        ["Files (%)"]: percentage(o.filesOwned, fileStats.filesCount),
+        ["Total (%)"]: percentage(
+          o.dirsOwned + o.filesOwned,
+          fileStats.dirsCount + fileStats.filesCount
+        ),
+      })),
+  }).printTable();
+
+  // Printing paths with
+  const ownersCountTable = new Table();
+  pathsByOwnersCount.forEach((paths, ownersCount) => {
+    let color: string | undefined;
+    if (ownersCount < 2) {
+      color = "red";
+    } else if (ownersCount > 3) {
+      color = "yellow";
+    }
+
+    ownersCountTable.addRow(
+      {
+        ["Owners count"]: ownersCount,
+        ["Count"]: paths.length,
+      },
+      {
+        color,
+      }
+    );
+  });
+  ownersCountTable.printTable();
 
   // Printing unowned paths
   new Table({
@@ -235,7 +307,7 @@ async function main() {
       {
         name: "path",
         alignment: "left",
-        title: "No owners path",
+        title: "No owners",
         color: "red",
       },
     ],
