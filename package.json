@@ -1,9 +1,9 @@
 {
-  "name": "owners-scanner",
+  "name": "chromium-owners-scanner",
   "version": "0.0.1",
   "description": "An utility belt to assist teams working with Chromium's OWNERS files",
   "bin": {
-    "gowners": "dist/index.js"
+    "goowners": "dist/index.js"
   },
   "scripts": {
     "postinstall": "tsc",
