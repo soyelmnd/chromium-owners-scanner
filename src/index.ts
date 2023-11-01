@@ -20,13 +20,17 @@ type OwnerNode = {
 
 const OWNERS_FILE_NAME = "OWNERS";
 
+// TODO error handling
+
+// TODO tests and code split
+
 // TODO subcommand to not list everything at once
-// TODO take the list of exclusion from .gitignore if available. Or git ls-files instead?
+// TODO refactor IGNORING_RGX to be configurable esp when this is not a git repo
 // TODO auto set git repo root as the BASE_DIR
 const BASE_DIR = process.cwd();
 const IGNORING_RGX = new RegExp(
   "(?:" +
-    ["^\./", "\.git", "node_modules", `${OWNERS_FILE_NAME}$`].join("|") +
+    ["^./", ".git", "node_modules", `${OWNERS_FILE_NAME}$`].join("|") +
     ")"
 );
 
@@ -170,13 +174,15 @@ function parseOwnersFile(path: string): OwnerNode | undefined {
     }
 
     if (!line.endsWith(OWNERS_FILE_NAME)) {
-      throw new Error(`Invalid include syntax: "${line}" should point to an OWNERS file`);
+      throw new Error(
+        `Invalid include syntax: "${line}" should point to an OWNERS file`
+      );
     }
 
     const [_wholeMatch, directive, includePath] = matches;
 
     // The file: directive would skip per-file and `set noparent` rules
-    const skipImplicitGrant = directive === 'file:';
+    const skipImplicitGrant = directive === "file:";
 
     const includeFullPath = includePath.startsWith("/")
       ? pathJoin(BASE_DIR, includePath)
@@ -184,7 +190,9 @@ function parseOwnersFile(path: string): OwnerNode | undefined {
 
     const includeLines = loadFile(includeFullPath);
     const filteredIncludeLines = skipImplicitGrant
-      ? includeLines.filter(line => !/^(?:per-file|set noparent)\b/.test(line))
+      ? includeLines.filter(
+          (line) => !/^(?:per-file|set noparent)\b/.test(line)
+        )
       : includeLines;
 
     lines.push(...filteredIncludeLines);
@@ -254,7 +262,9 @@ async function main() {
     [key: string]: { owner: string; filesOwned: number };
   } = {};
 
-  const { stdout: gitLsFilesOutput } = await exec(`cd ${BASE_DIR}; git ls-files`);
+  const { stdout: gitLsFilesOutput } = await exec(
+    `cd ${BASE_DIR}; git ls-files`
+  );
   const gitFiles = new Set(splitLines(gitLsFilesOutput));
 
   const fileStats = {
@@ -284,7 +294,8 @@ async function main() {
       }
 
       // Co-owners count can be helpful in ensuring the right ownership is there
-      coownersCountMap[owners.length] = (coownersCountMap[owners.length] || 0) + 1;
+      coownersCountMap[owners.length] =
+        (coownersCountMap[owners.length] || 0) + 1;
     }
 
     owners.forEach((owner) => {
