@@ -7,7 +7,7 @@ import { existsSync as fsExistsSync, readFileSync as fsReadFileSync } from "fs";
 import { join as pathJoin } from "path";
 import { Table } from "console-table-printer";
 
-const exec = promisify(childProcessExec);
+export const exec = promisify(childProcessExec);
 
 type OwnerNode = {
   noParent: boolean;
@@ -27,14 +27,14 @@ const OWNERS_FILE_NAME = "OWNERS";
 // TODO subcommand to not list everything at once
 // TODO refactor IGNORING_RGX to be configurable esp when this is not a git repo
 // TODO auto set git repo root as the BASE_DIR
-const BASE_DIR = process.cwd();
+export const BASE_DIR = process.cwd();
 const IGNORING_RGX = new RegExp(
   "(?:" +
     ["^./", ".git", "node_modules", `${OWNERS_FILE_NAME}$`].join("|") +
     ")"
 );
 
-async function scanOwners() {
+export async function scanOwners() {
   const pathToOwners = new Map<string, string[]>();
 
   // Scan all files and folders inside
@@ -238,7 +238,7 @@ function loadFile(fullPath: string): string[] {
   return splitLines(fsReadFileSync(fullPath, "utf8"));
 }
 
-function splitLines(text: string): string[] {
+export function splitLines(text: string): string[] {
   return text.trim().split(/\s*\n+\s*/);
 }
 

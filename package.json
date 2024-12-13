@@ -3,11 +3,11 @@
   "version": "0.0.1",
   "description": "An utility belt to assist teams working with Chromium's OWNERS files",
   "bin": {
-    "goowners": "dist/index.js"
+    "stats": "dist/stats.js"
   },
   "scripts": {
     "build": "tsc -p .",
-    "start": "npm run build && node dist/index.js"
+    "stats": "npm run build && node dist/stats.js"
   },
   "license": "ISC",
   "dependencies": {
