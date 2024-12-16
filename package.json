@@ -3,15 +3,19 @@
   "version": "0.0.1",
   "description": "An utility belt to assist teams working with Chromium's OWNERS files",
   "bin": {
-    "stats": "dist/stats.js"
+    "goowners": "dist/stats.js",
+    "stats": "dist/stats.js",
+    "test-coverage": "dist/test-coverage.js"
   },
   "scripts": {
     "build": "tsc -p .",
-    "stats": "npm run build && node dist/stats.js"
+    "stats": "npm run build && node dist/stats.js",
+    "test-coverage": "npm run build && node dist/test-coverage.js"
   },
   "license": "ISC",
   "dependencies": {
-    "console-table-printer": "^2.11.2"
+    "console-table-printer": "^2.11.2",
+    "jest": "^29.7.0"
   },
   "devDependencies": {
     "@types/node": "^20.8.9",

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Table } from "console-table-printer";
-import { BASE_DIR, exec, scanOwners, splitLines } from "./lib";
+import { BASE_DIR, getGitFiles, scanOwners } from "./lib";
 
 async function main() {
   const { pathToOwners } = await scanOwners();
@@ -16,13 +16,8 @@ async function main() {
   const unownedFiles: string[] = [];
 
   const ownersStats: {
-    [key: string]: { owner: string; filesOwned: number };
+    [path: string]: { owner: string; filesOwned: number };
   } = {};
-
-  const { stdout: gitLsFilesOutput } = await exec(
-    `cd ${BASE_DIR}; git ls-files`
-  );
-  const gitFiles = new Set(splitLines(gitLsFilesOutput));
 
   const fileStats = {
     filesCount: 0,
@@ -31,6 +26,8 @@ async function main() {
 
   // It is actually a { [coownersCount: number]: number } map. Sorry for abusing array :grimacing:
   const coownersCountMap: number[] = [];
+
+  const gitFiles = await getGitFiles();
 
   pathToOwners.forEach((owners, path) => {
     if (!gitFiles.has(path)) {
