@@ -2,22 +2,27 @@
 
 import { Table } from "console-table-printer";
 import { BASE_DIR, getGitFiles, scanOwners } from "./lib";
-import { readFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import type { CoverageMapData } from "istanbul-lib-coverage";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
 async function main() {
-  const argv = yargs(hideBin(process.argv))
+  const { pathToCoverageJson, output } = yargs(hideBin(process.argv))
     .option("pathToCoverageJson", {
       alias: "p",
       type: "string",
       default: "coverage/coverage-final.json",
       description: "Path to coverage-final.json",
     })
+    .option("output", {
+      alias: "o",
+      type: "string",
+      default: undefined,
+      description: "Output path to write the report to",
+    })
     .parseSync();
 
-  const pathToCoverageJson = argv.pathToCoverageJson;
   const coverageMapData = await loadCoverageMapData(pathToCoverageJson);
 
   const { pathToOwners } = await scanOwners();
@@ -107,6 +112,16 @@ async function main() {
       )
       .sort((a, b) => b.coveredStatements - a.coveredStatements),
   }).printTable();
+
+  if (output) {
+    await writeFile(
+      output,
+      JSON.stringify({
+        summarizedOwnerCoverages,
+        ownerCoveragesMap,
+      })
+    );
+  }
 }
 
 async function loadCoverageMapData(

@@ -20,15 +20,20 @@ const yargs_1 = __importDefault(require("yargs"));
 const helpers_1 = require("yargs/helpers");
 function main() {
     return __awaiter(this, void 0, void 0, function* () {
-        const argv = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv))
+        const { pathToCoverageJson, output } = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv))
             .option("pathToCoverageJson", {
             alias: "p",
             type: "string",
             default: "coverage/coverage-final.json",
             description: "Path to coverage-final.json",
         })
+            .option("output", {
+            alias: "o",
+            type: "string",
+            default: undefined,
+            description: "Output path to write the report to",
+        })
             .parseSync();
-        const pathToCoverageJson = argv.pathToCoverageJson;
         const coverageMapData = yield loadCoverageMapData(pathToCoverageJson);
         const { pathToOwners } = yield (0, lib_1.scanOwners)();
         const ownerCoveragesMap = {};
@@ -85,6 +90,12 @@ function main() {
             })
                 .sort((a, b) => b.coveredStatements - a.coveredStatements),
         }).printTable();
+        if (output) {
+            yield (0, promises_1.writeFile)(output, JSON.stringify({
+                summarizedOwnerCoverages,
+                ownerCoveragesMap,
+            }));
+        }
     });
 }
 function loadCoverageMapData(pathToCoverageJson) {
