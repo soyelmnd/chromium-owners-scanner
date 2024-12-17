@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Table } from "console-table-printer";
-import { BASE_DIR, getGitFiles, scanOwners } from "./lib";
+import { getGitFiles, scanOwners } from "./lib";
 
 async function main() {
   const { pathToOwners } = await scanOwners();

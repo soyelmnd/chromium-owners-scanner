@@ -21,11 +21,11 @@ const helpers_1 = require("yargs/helpers");
 function main() {
     return __awaiter(this, void 0, void 0, function* () {
         const argv = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv))
-            .option('pathToCoverageJson', {
-            alias: 'p',
-            type: 'string',
-            default: 'coverage/coverage-final.json',
-            description: 'Path to coverage-final.json'
+            .option("pathToCoverageJson", {
+            alias: "p",
+            type: "string",
+            default: "coverage/coverage-final.json",
+            description: "Path to coverage-final.json",
         })
             .parseSync();
         const pathToCoverageJson = argv.pathToCoverageJson;
@@ -90,8 +90,7 @@ function main() {
 function loadCoverageMapData(pathToCoverageJson) {
     return __awaiter(this, void 0, void 0, function* () {
         // TODO error handling for readFile
-        const coverageMapData = JSON.parse(yield (0, promises_1.readFile)(pathToCoverageJson, 'utf-8'));
-        console.log(coverageMapData);
+        const coverageMapData = JSON.parse(yield (0, promises_1.readFile)(pathToCoverageJson, "utf-8"));
         // TODO verify the data
         return coverageMapData;
     });

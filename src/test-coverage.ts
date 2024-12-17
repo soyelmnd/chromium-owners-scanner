@@ -9,14 +9,14 @@ import { hideBin } from "yargs/helpers";
 
 async function main() {
   const argv = yargs(hideBin(process.argv))
-  .option('pathToCoverageJson', {
-    alias: 'p',
-    type: 'string',
-    default: 'coverage/coverage-final.json',
-    description: 'Path to coverage-final.json'
-  })
-  .parseSync();
-  
+    .option("pathToCoverageJson", {
+      alias: "p",
+      type: "string",
+      default: "coverage/coverage-final.json",
+      description: "Path to coverage-final.json",
+    })
+    .parseSync();
+
   const pathToCoverageJson = argv.pathToCoverageJson;
   const coverageMapData = await loadCoverageMapData(pathToCoverageJson);
 
@@ -113,9 +113,10 @@ async function loadCoverageMapData(
   pathToCoverageJson: string
 ): Promise<CoverageMapData> {
   // TODO error handling for readFile
-  const coverageMapData = JSON.parse(await readFile(pathToCoverageJson, 'utf-8'));
+  const coverageMapData = JSON.parse(
+    await readFile(pathToCoverageJson, "utf-8")
+  );
 
-  console.log(coverageMapData);
   // TODO verify the data
 
   return coverageMapData as any;
