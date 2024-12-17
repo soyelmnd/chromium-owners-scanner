@@ -89,8 +89,9 @@ function main() {
 }
 function loadCoverageMapData(pathToCoverageJson) {
     return __awaiter(this, void 0, void 0, function* () {
-        const coverageMapData = yield (0, promises_1.readFile)(pathToCoverageJson);
         // TODO error handling for readFile
+        const coverageMapData = JSON.parse(yield (0, promises_1.readFile)(pathToCoverageJson, 'utf-8'));
+        console.log(coverageMapData);
         // TODO verify the data
         return coverageMapData;
     });

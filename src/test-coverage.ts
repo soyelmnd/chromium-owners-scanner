@@ -112,9 +112,10 @@ async function main() {
 async function loadCoverageMapData(
   pathToCoverageJson: string
 ): Promise<CoverageMapData> {
-  const coverageMapData = await readFile(pathToCoverageJson);
-
   // TODO error handling for readFile
+  const coverageMapData = JSON.parse(await readFile(pathToCoverageJson, 'utf-8'));
+
+  console.log(coverageMapData);
   // TODO verify the data
 
   return coverageMapData as any;
