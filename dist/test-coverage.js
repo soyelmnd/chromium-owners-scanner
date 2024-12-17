@@ -9,25 +9,28 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const console_table_printer_1 = require("console-table-printer");
 const lib_1 = require("./lib");
-const jest_1 = require("jest");
+const promises_1 = require("fs/promises");
+const yargs_1 = __importDefault(require("yargs"));
+const helpers_1 = require("yargs/helpers");
 function main() {
     return __awaiter(this, void 0, void 0, function* () {
+        const argv = (0, yargs_1.default)((0, helpers_1.hideBin)(process.argv))
+            .option('pathToCoverageJson', {
+            alias: 'p',
+            type: 'string',
+            default: 'coverage/coverage-final.json',
+            description: 'Path to coverage-final.json'
+        })
+            .parseSync();
+        const pathToCoverageJson = argv.pathToCoverageJson;
+        const coverageMapData = yield loadCoverageMapData(pathToCoverageJson);
         const { pathToOwners } = yield (0, lib_1.scanOwners)();
-        // TODO error handling for the runCLI
-        const { results: { coverageMap }, } = yield (0, jest_1.runCLI)({
-            coverage: true,
-            _: [],
-            $0: "",
-            silent: true,
-        }, [lib_1.BASE_DIR]);
-        const coverageMapData = coverageMap === null || coverageMap === void 0 ? void 0 : coverageMap.data;
-        if (!coverageMapData) {
-            console.log("No coverage hmm - why?");
-            return;
-        }
         const ownerCoveragesMap = {};
         const summarizedOwnerCoverages = {};
         const gitFiles = yield (0, lib_1.getGitFiles)();
@@ -77,11 +80,19 @@ function main() {
                     owner,
                     totalStatements,
                     coveredStatements,
-                    coveredStatementsRatio: (coveredStatementsRatio * 100).toFixed(2) + '%',
+                    coveredStatementsRatio: (coveredStatementsRatio * 100).toFixed(2) + "%",
                 };
             })
                 .sort((a, b) => b.coveredStatements - a.coveredStatements),
         }).printTable();
+    });
+}
+function loadCoverageMapData(pathToCoverageJson) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const coverageMapData = yield (0, promises_1.readFile)(pathToCoverageJson);
+        // TODO error handling for readFile
+        // TODO verify the data
+        return coverageMapData;
     });
 }
 main();

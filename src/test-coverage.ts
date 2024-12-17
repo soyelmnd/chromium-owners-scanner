@@ -1,31 +1,26 @@
 #!/usr/bin/env node
 
 import { Table } from "console-table-printer";
-import { BASE_DIR, exec, getGitFiles, scanOwners, splitLines } from "./lib";
-import { runCLI } from "jest";
+import { BASE_DIR, getGitFiles, scanOwners } from "./lib";
+import { readFile } from "fs/promises";
+import type { CoverageMapData } from "istanbul-lib-coverage";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
 
 async function main() {
+  const argv = yargs(hideBin(process.argv))
+  .option('pathToCoverageJson', {
+    alias: 'p',
+    type: 'string',
+    default: 'coverage/coverage-final.json',
+    description: 'Path to coverage-final.json'
+  })
+  .parseSync();
+  
+  const pathToCoverageJson = argv.pathToCoverageJson;
+  const coverageMapData = await loadCoverageMapData(pathToCoverageJson);
+
   const { pathToOwners } = await scanOwners();
-
-  // TODO error handling for the runCLI
-
-  const {
-    results: { coverageMap },
-  } = await runCLI(
-    {
-      coverage: true,
-      _: [],
-      $0: "",
-      silent: true,
-    },
-    [BASE_DIR]
-  );
-
-  const coverageMapData = coverageMap?.data;
-  if (!coverageMapData) {
-    console.log("No coverage hmm - why?");
-    return;
-  }
 
   const ownerCoveragesMap: {
     [owner: string]: {
@@ -105,12 +100,24 @@ async function main() {
             owner,
             totalStatements,
             coveredStatements,
-            coveredStatementsRatio: (coveredStatementsRatio * 100).toFixed(2) + '%',
+            coveredStatementsRatio:
+              (coveredStatementsRatio * 100).toFixed(2) + "%",
           };
         }
       )
       .sort((a, b) => b.coveredStatements - a.coveredStatements),
   }).printTable();
+}
+
+async function loadCoverageMapData(
+  pathToCoverageJson: string
+): Promise<CoverageMapData> {
+  const coverageMapData = await readFile(pathToCoverageJson);
+
+  // TODO error handling for readFile
+  // TODO verify the data
+
+  return coverageMapData as any;
 }
 
 main();
