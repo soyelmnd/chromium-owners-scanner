@@ -4,8 +4,8 @@
   "description": "An utility belt to assist teams working with Chromium's OWNERS files",
   "bin": {
     "goowners": "dist/stats.js",
-    "stats": "dist/stats.js",
-    "test-coverage": "dist/test-coverage.js"
+    "goowners-stats": "dist/stats.js",
+    "goowners-test-coverage": "dist/test-coverage.js"
   },
   "scripts": {
     "build": "tsc -p .",
