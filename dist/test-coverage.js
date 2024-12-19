@@ -48,11 +48,11 @@ function main() {
         const columns = [
             { name: "owner", title: "Owner" },
             { name: "totalStatements", title: "Statements" },
-            { name: "coveredStatements", title: "Covered statements", color: "green" },
+            { name: "coveredStatements", title: "Covered statements", color: "cyan" },
             {
                 name: "diffCoveredStatements",
                 title: "DIFF",
-                color: "yellow",
+                color: "green",
             },
             { name: "totalBranches", title: "Branches" },
             { name: "coveredBranches", title: "Covered branches" },
