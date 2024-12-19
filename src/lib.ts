@@ -34,8 +34,10 @@ const IGNORING_RGX = new RegExp(
     ")"
 );
 
+export type PathToOwnerMap = Map</* path to file */ string, /* owners */ string[]>;
+
 export async function scanOwners() {
-  const pathToOwners = new Map<string, string[]>();
+  const pathToOwners: PathToOwnerMap = new Map();
 
   // Scan all files and folders inside
   await walkInto([], []);

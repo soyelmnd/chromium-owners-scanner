@@ -1,33 +1,127 @@
 #!/usr/bin/env node
 
 import { Table } from "console-table-printer";
-import { BASE_DIR, getGitFiles, scanOwners } from "./lib";
+import { BASE_DIR, getGitFiles, PathToOwnerMap, scanOwners } from "./lib";
 import { readFile, writeFile } from "fs/promises";
 import type { CoverageMapData } from "istanbul-lib-coverage";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
 async function main() {
-  const { pathToCoverageJson, output } = yargs(hideBin(process.argv))
+  const { pathToCoverageJson, pathToBaselineCoverageJson, output } = yargs(
+    hideBin(process.argv)
+  )
     .option("pathToCoverageJson", {
       alias: "p",
       type: "string",
       default: "coverage/coverage-final.json",
       description: "Path to coverage-final.json",
     })
+    .option("pathToBaselineCoverageJson", {
+      alias: "b",
+      type: "string",
+      default: undefined,
+      description: "Path to the baseline coverage-final.json for comparison",
+    })
     .option("output", {
       alias: "o",
       type: "string",
       default: undefined,
-      description: "Output path to write the report to",
+      description:
+        "Output path to write the detailed report to, useful to manually verify the numbers I guess",
     })
     .parseSync();
 
   const coverageMapData = await loadCoverageMapData(pathToCoverageJson);
+  const baselineCoverageMapData = pathToBaselineCoverageJson
+    ? await loadCoverageMapData(pathToBaselineCoverageJson)
+    : undefined;
 
   const { pathToOwners } = await scanOwners();
 
-  const ownerCoveragesMap: {
+  const gitFiles = await getGitFiles();
+
+  const { ownerCoverage, ownerCoverageSummary } = await mapOwnerCoverageInfo({
+    coverageMapData,
+    pathToOwners,
+    gitFiles,
+  });
+
+  if (baselineCoverageMapData) {
+    // When there's a baseline coverage, we'd sort the table by the highest _difference_
+    // in the number of covered statements (not the typical covered statements themselves)
+    const { ownerCoverageSummary: baselineOwnerCoverageSummary } =
+      await mapOwnerCoverageInfo({
+        coverageMapData: baselineCoverageMapData,
+        pathToOwners,
+        gitFiles,
+      });
+
+    new Table({
+      rows: Object.entries(ownerCoverageSummary)
+        .map(
+          ([
+            owner,
+            { totalStatements, coveredStatements, coveredStatementsRatio },
+          ]) => {
+            const baselineCoveredStatements =
+              baselineOwnerCoverageSummary[owner]?.coveredStatements || 0;
+
+            return {
+              owner,
+              totalStatements,
+              coveredStatements,
+              changedCoveredStatements:
+                coveredStatements - baselineCoveredStatements,
+              coveredStatementsRatio:
+                (coveredStatementsRatio * 100).toFixed(2) + "%",
+            };
+          }
+        )
+        .sort(
+          (a, b) => b.changedCoveredStatements - a.changedCoveredStatements
+        ),
+    }).printTable();
+  } else {
+    new Table({
+      rows: Object.entries(ownerCoverageSummary)
+        .map(
+          ([
+            owner,
+            { totalStatements, coveredStatements, coveredStatementsRatio },
+          ]) => ({
+            owner,
+            totalStatements,
+            coveredStatements,
+            coveredStatementsRatio:
+              (coveredStatementsRatio * 100).toFixed(2) + "%",
+          })
+        )
+        .sort((a, b) => b.coveredStatements - a.coveredStatements),
+    }).printTable();
+  }
+
+  if (output) {
+    await writeFile(
+      output,
+      JSON.stringify({
+        summarizedOwnerCoverages: ownerCoverageSummary,
+        ownerCoveragesMap: ownerCoverage,
+      })
+    );
+  }
+}
+
+async function mapOwnerCoverageInfo({
+  coverageMapData,
+  pathToOwners,
+  gitFiles,
+}: {
+  coverageMapData: CoverageMapData;
+  pathToOwners: PathToOwnerMap;
+  gitFiles: Set<string>;
+}) {
+  const ownerCoverage: {
     [owner: string]: {
       [path: string]: {
         path: string;
@@ -37,15 +131,13 @@ async function main() {
       };
     };
   } = {};
-  const summarizedOwnerCoverages: {
+  const ownerCoverageSummary: {
     [owner: string]: {
       totalStatements: number;
       coveredStatements: number;
       coveredStatementsRatio: number;
     };
   } = {};
-
-  const gitFiles = await getGitFiles();
 
   pathToOwners.forEach((owners, path) => {
     if (!gitFiles.has(path)) {
@@ -54,6 +146,7 @@ async function main() {
     if (!owners.length) {
       return;
     }
+    // TODO(Minh) this only works with full path. Should be a better way around, e.g. tweak the coverage collection to have relative path?
     const coverage = coverageMapData[BASE_DIR + "/" + path];
     if (!coverage) {
       return;
@@ -66,62 +159,38 @@ async function main() {
     );
 
     owners.forEach((owner) => {
-      if (!ownerCoveragesMap[owner]) {
-        ownerCoveragesMap[owner] = {};
+      if (!ownerCoverage[owner]) {
+        ownerCoverage[owner] = {};
       }
-      ownerCoveragesMap[owner][path] = {
+      ownerCoverage[owner][path] = {
         path,
         totalStatements,
         coveredStatements,
         coveredStatementsRatio: coveredStatements / totalStatements,
       };
 
-      if (!summarizedOwnerCoverages[owner]) {
-        summarizedOwnerCoverages[owner] = {
+      if (!ownerCoverageSummary[owner]) {
+        ownerCoverageSummary[owner] = {
           totalStatements: 0,
           coveredStatements: 0,
           coveredStatementsRatio: 0, // more like undefined at this point but
         };
       }
-      summarizedOwnerCoverages[owner].totalStatements += totalStatements;
-      summarizedOwnerCoverages[owner].coveredStatements += coveredStatements;
+      ownerCoverageSummary[owner].totalStatements += totalStatements;
+      ownerCoverageSummary[owner].coveredStatements += coveredStatements;
     });
   });
 
-  Object.values(summarizedOwnerCoverages).forEach((coverageSummaryPerOwner) => {
+  Object.values(ownerCoverageSummary).forEach((coverageSummaryPerOwner) => {
     coverageSummaryPerOwner.coveredStatementsRatio =
       coverageSummaryPerOwner.coveredStatements /
-      coverageSummaryPerOwner.totalStatements;
+        coverageSummaryPerOwner.totalStatements || 0;
   });
 
-  new Table({
-    rows: Object.entries(summarizedOwnerCoverages)
-      .map(
-        ([
-          owner,
-          { totalStatements, coveredStatements, coveredStatementsRatio },
-        ]) => {
-          return {
-            owner,
-            totalStatements,
-            coveredStatements,
-            coveredStatementsRatio:
-              (coveredStatementsRatio * 100).toFixed(2) + "%",
-          };
-        }
-      )
-      .sort((a, b) => b.coveredStatements - a.coveredStatements),
-  }).printTable();
-
-  if (output) {
-    await writeFile(
-      output,
-      JSON.stringify({
-        summarizedOwnerCoverages,
-        ownerCoveragesMap,
-      })
-    );
-  }
+  return {
+    ownerCoverage,
+    ownerCoverageSummary,
+  };
 }
 
 async function loadCoverageMapData(
