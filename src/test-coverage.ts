@@ -3,140 +3,129 @@
 import { Table } from "console-table-printer";
 import { BASE_DIR, getGitFiles, PathToOwnerMap, scanOwners } from "./lib";
 import { readFile, writeFile } from "fs/promises";
-import type { CoverageMapData } from "istanbul-lib-coverage";
+// TODO(Minh) correct the import as it is not even in dep list yet
+import type { CoverageSummaryData } from "istanbul-lib-coverage";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { ColumnOptionsRaw } from "console-table-printer/dist/src/models/external-table";
+
+type CoverageSummaryDataMap = { [path: string]: CoverageSummaryData };
+
+// TODO(Minh) correct the naming of these lazy little helper variables
+const types = ["statements", "lines", "functions", "branches"] as const;
+const props = ["total", "covered", "skipped"] as const;
 
 async function main() {
-  const { pathToCoverageJson, pathToBaselineCoverageJson, output } = yargs(
+  const { coverageSummaryJson, baselineCoverageSummaryJson, output } = yargs(
     hideBin(process.argv)
   )
-    .option("pathToCoverageJson", {
+    .option("coverageSummaryJson", {
       alias: "p",
       type: "string",
-      default: "coverage/coverage-final.json",
-      description: "Path to coverage-final.json",
+      default: "coverage/coverage-summary.json",
+      description: "Path to coverage-summary.json",
     })
-    .option("pathToBaselineCoverageJson", {
+    .option("baselineCoverageSummaryJson", {
       alias: "b",
       type: "string",
       default: undefined,
-      description: "Path to the baseline coverage-final.json for comparison",
-    })
-    .option("output", {
-      alias: "o",
-      type: "string",
-      default: undefined,
-      description:
-        "Output path to write the detailed report to, useful to manually verify the numbers I guess",
+      description: "Path to the baseline coverage-summary.json for comparison",
     })
     .parseSync();
 
-  const coverageMapData = await loadCoverageMapData(pathToCoverageJson);
-  const baselineCoverageMapData = pathToBaselineCoverageJson
-    ? await loadCoverageMapData(pathToBaselineCoverageJson)
-    : undefined;
+  const coverageSummaryDataMap = await loadCoverageSummaryDataMap(
+    coverageSummaryJson
+  );
 
   const { pathToOwners } = await scanOwners();
-
   const gitFiles = await getGitFiles();
 
-  const { ownerCoverage, ownerCoverageSummary } = await mapOwnerCoverageInfo({
-    coverageMapData,
+  const { ownerCoverageSummary } = await mapOwnerCoverageInfo({
+    coverageSummaryDataMap,
     pathToOwners,
     gitFiles,
   });
 
-  if (baselineCoverageMapData) {
-    // When there's a baseline coverage, we'd sort the table by the highest _difference_
-    // in the number of covered statements (not the typical covered statements themselves)
+  const columns: ColumnOptionsRaw[] = [
+    { name: "owner", title: "Owner" },
+    { name: "totalStatements", title: "Statements" },
+    { name: "coveredStatements", title: "Covered statements", color: "green" },
+    {
+      name: "diffCoveredStatements",
+      title: "DIFF",
+      color: "yellow",
+    },
+    { name: "totalBranches", title: "Branches" },
+    { name: "coveredBranches", title: "Covered branches" },
+    { name: "totalFunctions", title: "Functions" },
+    { name: "coveredFunctions", title: "Covered functions" },
+  ];
+  const disabledColumns = ["_coveredStatementsCount"];
+
+  const sortedReportRows = Object.entries(ownerCoverageSummary)
+    .map(([owner, { statements, branches, functions }]) => ({
+      owner,
+      totalStatements: statements.total,
+      coveredStatements: `${statements.covered} (${statements.pct}%)`,
+      totalBranches: branches.total,
+      coveredBranches: `${branches.covered} (${branches.pct}%)`,
+      totalFunctions: functions.total,
+      coveredFunctions: `${functions.covered} (${functions.pct}%)`,
+
+      diffCoveredStatements: 0,
+
+      // Yup this is used for sorting and diffing, not visible on screen, hence the _ naming
+      _coveredStatementsCount: statements.covered,
+    }))
+    .sort((a, b) => b._coveredStatementsCount - a._coveredStatementsCount);
+
+  // Assuming when we pass baseline, we wanna see the _difference_ instead of the typical covered statements count
+  if (baselineCoverageSummaryJson) {
+    const baselineCoverageSummaryDataMap = await loadCoverageSummaryDataMap(
+      baselineCoverageSummaryJson
+    );
+
     const { ownerCoverageSummary: baselineOwnerCoverageSummary } =
       await mapOwnerCoverageInfo({
-        coverageMapData: baselineCoverageMapData,
+        coverageSummaryDataMap: baselineCoverageSummaryDataMap,
         pathToOwners,
         gitFiles,
       });
 
-    new Table({
-      rows: Object.entries(ownerCoverageSummary)
-        .map(
-          ([
-            owner,
-            { totalStatements, coveredStatements, coveredStatementsRatio },
-          ]) => {
-            const baselineCoveredStatements =
-              baselineOwnerCoverageSummary[owner]?.coveredStatements || 0;
+    sortedReportRows.forEach((row) => {
+      const baselineCoveredStatements =
+        baselineOwnerCoverageSummary[row.owner]?.statements.covered || 0;
 
-            return {
-              owner,
-              totalStatements,
-              coveredStatements,
-              changedCoveredStatements:
-                coveredStatements - baselineCoveredStatements,
-              coveredStatementsRatio:
-                (coveredStatementsRatio * 100).toFixed(2) + "%",
-            };
-          }
-        )
-        .sort(
-          (a, b) => b.changedCoveredStatements - a.changedCoveredStatements
-        ),
-    }).printTable();
+      row.diffCoveredStatements =
+        row._coveredStatementsCount - baselineCoveredStatements;
+    });
+
+    sortedReportRows.sort((a, b) => {
+      if (b.diffCoveredStatements !== a.diffCoveredStatements) {
+        return b.diffCoveredStatements - a.diffCoveredStatements;
+      }
+      return b._coveredStatementsCount - a._coveredStatementsCount;
+    });
   } else {
-    new Table({
-      rows: Object.entries(ownerCoverageSummary)
-        .map(
-          ([
-            owner,
-            { totalStatements, coveredStatements, coveredStatementsRatio },
-          ]) => ({
-            owner,
-            totalStatements,
-            coveredStatements,
-            coveredStatementsRatio:
-              (coveredStatementsRatio * 100).toFixed(2) + "%",
-          })
-        )
-        .sort((a, b) => b.coveredStatements - a.coveredStatements),
-    }).printTable();
+    disabledColumns.push("diffCoveredStatements");
   }
 
-  if (output) {
-    await writeFile(
-      output,
-      JSON.stringify({
-        summarizedOwnerCoverages: ownerCoverageSummary,
-        ownerCoveragesMap: ownerCoverage,
-      })
-    );
-  }
+  const reportTable = new Table({ columns, disabledColumns });
+  reportTable.addRows(sortedReportRows);
+  reportTable.printTable();
 }
 
 async function mapOwnerCoverageInfo({
-  coverageMapData,
+  coverageSummaryDataMap,
   pathToOwners,
   gitFiles,
 }: {
-  coverageMapData: CoverageMapData;
+  coverageSummaryDataMap: CoverageSummaryDataMap;
   pathToOwners: PathToOwnerMap;
   gitFiles: Set<string>;
 }) {
-  const ownerCoverage: {
-    [owner: string]: {
-      [path: string]: {
-        path: string;
-        totalStatements: number;
-        coveredStatements: number;
-        coveredStatementsRatio: number;
-      };
-    };
-  } = {};
   const ownerCoverageSummary: {
-    [owner: string]: {
-      totalStatements: number;
-      coveredStatements: number;
-      coveredStatementsRatio: number;
-    };
+    [owner: string]: CoverageSummaryData;
   } = {};
 
   pathToOwners.forEach((owners, path) => {
@@ -147,63 +136,55 @@ async function mapOwnerCoverageInfo({
       return;
     }
     // TODO(Minh) this only works with full path. Should be a better way around, e.g. tweak the coverage collection to have relative path?
-    const coverage = coverageMapData[BASE_DIR + "/" + path];
+    const coverage = coverageSummaryDataMap[BASE_DIR + "/" + path];
     if (!coverage) {
       return;
     }
 
-    const totalStatements = Object.keys(coverage.statementMap).length;
-    const coveredStatements = Object.values(coverage.s).reduce(
-      (coveredLines, thisLine) => coveredLines + (thisLine ? 1 : 0),
-      0
-    );
-
     owners.forEach((owner) => {
-      if (!ownerCoverage[owner]) {
-        ownerCoverage[owner] = {};
-      }
-      ownerCoverage[owner][path] = {
-        path,
-        totalStatements,
-        coveredStatements,
-        coveredStatementsRatio: coveredStatements / totalStatements,
-      };
-
       if (!ownerCoverageSummary[owner]) {
         ownerCoverageSummary[owner] = {
-          totalStatements: 0,
-          coveredStatements: 0,
-          coveredStatementsRatio: 0, // more like undefined at this point but
+          statements: { total: 0, covered: 0, skipped: 0, pct: 0 },
+          lines: { total: 0, covered: 0, skipped: 0, pct: 0 },
+          functions: { total: 0, covered: 0, skipped: 0, pct: 0 },
+          branches: { total: 0, covered: 0, skipped: 0, pct: 0 },
         };
       }
-      ownerCoverageSummary[owner].totalStatements += totalStatements;
-      ownerCoverageSummary[owner].coveredStatements += coveredStatements;
+
+      types.forEach((type) => {
+        props.forEach((prop) => {
+          ownerCoverageSummary[owner][type][prop] += coverage[type][prop];
+        });
+      });
     });
   });
 
-  Object.values(ownerCoverageSummary).forEach((coverageSummaryPerOwner) => {
-    coverageSummaryPerOwner.coveredStatementsRatio =
-      coverageSummaryPerOwner.coveredStatements /
-        coverageSummaryPerOwner.totalStatements || 0;
+  Object.values(ownerCoverageSummary).forEach((perOwner) => {
+    types.forEach((type) => {
+      // Yup we want to have 2 decimal after the dot, similar to the original coverage summary
+      perOwner[type].pct =
+        Math.round(
+          10000 * (perOwner[type].covered / perOwner[type].total || 0)
+        ) / 100;
+    });
   });
 
   return {
-    ownerCoverage,
     ownerCoverageSummary,
   };
 }
 
-async function loadCoverageMapData(
-  pathToCoverageJson: string
-): Promise<CoverageMapData> {
+async function loadCoverageSummaryDataMap(
+  coverageSummaryJson: string
+): Promise<CoverageSummaryDataMap> {
   // TODO error handling for readFile
-  const coverageMapData = JSON.parse(
-    await readFile(pathToCoverageJson, "utf-8")
+  const coverageSummaryDataMap = JSON.parse(
+    await readFile(coverageSummaryJson, "utf-8")
   );
 
   // TODO verify the data
 
-  return coverageMapData as any;
+  return coverageSummaryDataMap as any;
 }
 
 main();
